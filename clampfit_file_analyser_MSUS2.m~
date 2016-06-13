@@ -2,6 +2,11 @@
 %the code is A# for animal, s# for slice, c# for cell, 'holding current'.
 %txt for file
 cd
+
+%% Import data files
+
+parameters=fopen(
+
 r=0;
 r1=0;
 r2=0;
@@ -133,7 +138,7 @@ fld11=dir('s*');
 cd(oldfolder)
 end
 
-%%
+%% Make file size tables
     %take the size of the table from biggest size peak tables
     for i=1:length(rec)
         [n,~]=size(rec(i).values);
@@ -177,19 +182,112 @@ for j=1:length(types)
 
 end
 
+%% trimming filters
+
+%this part finds an index of time-dependent variability of data (in this
+%case through least square fitting) and enables trimming by a coefficient
+%cutt-off
+
+C=size(o{1,1}); %the use of this vector admits that all cells inside o are the same size
+o_mat=cell(length(variables),C(1,2));
+
+cache=o{j};
+master_metadata=cache(1:7,:);
+
+for j=1:length(o) %this length is given by the number of element in the variable array
+     o_temp1=o{j};
+     o_temp=o_temp1(7:end,:); %trimming out the headers
+     [m,n]=size(o_temp);
+     
+        for i=1:n
+            [mm,~]=size(o_temp(:,i));
+            o_temp_cell=cell(mm,1); %make a temporary cell for storing each column of o
+            o_temp_cell(:,1)=o_temp(:,i); %store each c of o...
+            mat_o_sub=cell2mat(o_temp_cell); %convert to mat, in this case normal matrix
+            
+            o_mat{j,i}=mat_o_sub; %store the matrix out, for further use
+            
+            xx=(1:length(mat_o_sub));
+            c=polyfit(xx',mat_o_sub,1);
+            poly_coeff(j,i)=c(1,1); %this array can be used to get the indexes of the "cells" that display abnormal variability
+        end
+end
+
+clear cache
+
+[m,n]=size(o_mat);
+o_mat_x=o_mat;
+
+
+Cn=C(1,2);
+CM=jet(Cn);
+for j=1:m
+   f=figure;
+   hold on
+   
+    for i=1:Cn
+        cc=numel(o_mat{j,i});
+        cc=(1:cc);
+        o_mat_x{j,i}=cc';
+        scatter(cc',o_mat{j,i},30,CM(i,1:3));
+        l=lsline;
+        set(l(1),'color',CM(i,1:3),'LineWidth',2);
+    end
+    
+    xlabel('event number')
+    ylabel(variables{j})
+    
+    hold off
+end
+
+
+%for total average frequency
+dur=3*60*1000;
+cache=o{1,1};
+for i=1:length(a)
+    av_frequency(1:4,i)=cache(1:4,i);
+    av_frequency{5,i}=1000*(a(i)-1)/dur;
+    
+end
+
+%average and median amplitude
+cache=o{2,1};
+for i=1:length(a)
+    av_amplitude(1:4,i)=cache(1:4,i);
+    array=cell2mat(cache(6:a(i)+5,i));
+    av_amplitude{5,i}=-1*sum(array)/a(i);
+    av_amplitude{6,i}=-1*median(array);
+end
+
+
+%for Vm and Ic of the first spike during CC
+
+[~,m]=size(oT{1,1});
+cacheV=oV{1,1};
+cacheIc=oT{1,1};
+AP_threshold=cell(size(cacheIc));
+
+for i=1:m
+    AP_threshold(1:4,i)=cacheIc(1:4,i);
+    AP_threshold{5,i}=cacheV{5+cacheIc{6,i},i};
+    AP_threshold{6,i}=I_steps(cacheIc{6,i});
+    
+end
+
+
 %to get absolute values
 
 
 %statistics will come here
 
-%exports files and gives names to the csv
-[n,m]=size(o);
-for j=1:m
-   for i=1:n
-       T=cell2table(o{i,j});
-       writetable(T,strcat(char(types(j)),'--',char(variables(i)),'.csv'));
-   end
-end
+% %exports files and gives names to the csv
+% [n,m]=size(o);
+% for j=1:m
+%    for i=1:n
+%        T=cell2table(o{i,j});
+%        writetable(T,strcat(char(types(j)),'--',char(variables(i)),'.csv'));
+%    end
+% end
 
 
 %% APs Analysis
@@ -232,8 +330,6 @@ end
 
 
 for jj=1:length(oT)
-    
-    
     origin_cache=oT{jj};
     
     [~,m]=size(origin_cache);
@@ -260,42 +356,7 @@ for jj=1:length(oT)
             end
                x=x+inc;
         end
-
-     end
-    
-end
-
-%for total average frequency
-dur=3*60*1000;
-cache=o{1,1};
-for i=1:length(a)
-    av_frequency(1:4,i)=cache(1:4,i);
-    av_frequency{5,i}=1000*(a(i)-1)/dur;
-    
-end
-
-%average and median amplitude
-cache=o{2,1};
-for i=1:length(a)
-    av_amplitude(1:4,i)=cache(1:4,i);
-    array=cell2mat(cache(6:a(i)+5,i));
-    av_amplitude{5,i}=-1*sum(array)/a(i);
-    av_amplitude{6,i}=-1*median(array);
-end
-
-
-%for Vm and Ic of the first spike during CC
-
-[~,m]=size(oT{1,1});
-cacheV=oV{1,1};
-cacheIc=oT{1,1};
-AP_threshold=cell(size(cacheIc));
-
-for i=1:m
-    AP_threshold(1:4,i)=cacheIc(1:4,i);
-    AP_threshold{5,i}=cacheV{5+cacheIc{6,i},i};
-    AP_threshold{6,i}=I_steps(cacheIc{6,i});
-    
+    end
 end
 
 %%
