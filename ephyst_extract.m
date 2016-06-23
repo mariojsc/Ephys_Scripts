@@ -15,12 +15,11 @@ function [target]=ephyst_extract(struct_origin,type,variable,target_size,modifie
 
             target{1,i}=struct_origin(y).animal;    
             target{2,i}=struct_origin(y).slice;    
-            target{4,i}=struct_origin(y).cell;
             target{3,i}=struct_origin(y).type;
-
+            target{4,i}=struct_origin(y).cell;
             target_cache=table2cell(struct_origin(y).values);
             
-            if iscell(variable) %should be modified for all possibilities; this make the function accept online str inside cells for this argument!!!
+            if iscell(variable) %should be modified for all possibilities; this makes the function accept online str inside cells for this argument!!!
                 [~,n]=find(strcmp(variable,target_cache));
                 [l,~]=size(target_cache);
                 k=1;
@@ -52,18 +51,14 @@ function [target]=ephyst_extract(struct_origin,type,variable,target_size,modifie
         if modifier==0 % in order to pic single strings from files (as in the CC.txt files)
                 target2=cell(size(target).*3);
                 [~,m]=size(target);
-                
                 i_hold=1;
                 j=1;
                 i=1;
                 j_hold=j;
-                
                     while j<m
                         a=target{1,j};
                         target2{1,j_hold}=a;
                         i=1;
-                        
-                      
                             while target{1,j}==a 
                                 target2{i+1,j_hold}=target{5,j};
                                 i=i+1;
@@ -74,10 +69,7 @@ function [target]=ephyst_extract(struct_origin,type,variable,target_size,modifie
                                 end
                                  
                             end
-                  
-                        
                         j_hold=j_hold+1;
-                        
                     end
                 target=target2;
         end

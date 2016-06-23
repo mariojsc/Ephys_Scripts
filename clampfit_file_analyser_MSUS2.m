@@ -1,16 +1,42 @@
 %cd the Rec folder with animals
 %the code is A# for animal, s# for slice, c# for cell, 'holding current'.
 %txt for file
+
+%there are Nan values on top of values in value cells of o and
+%such. This is the result of ephyst_extract starting applying str2double
+%from the very top of the files, so variable name gets Nan, and for instant
+%frequency, also the first N/A
+
 cd
 
-%% Import data files
 
-%import parameters
+
+%% import parameters for trimming
+
 fileID=fopen('~analysis_parameters.txt');
 P=textscan(fileID,'%s %d');
 fclose(fileID);
+parameter_strct=struct('parameter',P{1,1});
+values=P{1,2};
 
-%import data
+for i=1:length(parameter_strct)
+    parameter_strct(i).value=values(i);
+    parameter_strct(i).exclusion_vector=[];
+end
+
+
+%% import blinding_correspondence
+
+clear P
+
+fileID=fopen('~blinding.txt');
+P=textscan(fileID,'%s %s %s %s %s %s');
+fclose(fileID);
+
+
+
+%% import data sets
+
 r=0;
 r1=0;
 r2=0;
@@ -120,26 +146,57 @@ fld11=dir('s*');
         end
         
         files = dir('CC1_spiket.txt');
-        if (length(files))~=0
-            for id = 1:length(files);
-                        % creates tables with values from the converted files
-                        
-                        B=readtable(files(id).name,'HeaderLines',2,'Delimiter','tab','ReadVariableNames',false);
-                        %stores in struct
-                        recB(id+r3).type=files(id).name;
-                        recB(id+r3).values=B;
-                        recB(id+r3).animal=fld1(i).name;
-                        recB(id+r3).slice=fld11(j).name;
-                        recB(id+r3).cell=fld111(x).name; 
+            if (length(files))~=0
+                for id = 1:length(files);
+                            % creates tables with values from the converted files
+
+                            B=readtable(files(id).name,'HeaderLines',2,'Delimiter','tab','ReadVariableNames',false);
+                            %stores in struct
+                            recB(id+r3).type=files(id).name;
+                            recB(id+r3).values=B;
+                            recB(id+r3).animal=fld1(i).name;
+                            recB(id+r3).slice=fld11(j).name;
+                            recB(id+r3).cell=fld111(x).name; 
+                end
+                r3=r3+id;
             end
-            r3=r3+id;
-        end
-        
         cd(oldfolderrr)
         end
     cd(oldfolderr) 
     end
 cd(oldfolder)
+end
+
+%take rec structure and generate a blinding.txt with fields for each
+%parameter. This text file has to be filed in order to separate groups and
+%perform statistics
+
+clear cache
+cache=dir;
+
+v=0;
+for i=1:length(cache)
+    ccache=cache(i).name;
+        if strcmp(ccache,'~blinding.txt')
+        v=v+1;
+        end
+end
+
+if v==0
+
+    
+fID=fopen('~blinding.txt','wt');
+fprintf(fID,'type animal slice cell pharmacology experimental_group\n');
+
+for i=1:length(rec)
+    type=rec(i).type;
+    animal=rec(i).animal;
+    slice=rec(i).slice;
+    cell=rec(i).cell;
+    fprintf(fID,'%s %s %s %s\n',type,animal,slice,cell);
+end
+    fclose(fID);
+    
 end
 
 %% Make file size tables
@@ -159,7 +216,7 @@ end
         aB(i)=n;
     end     
     
-%% CC Analysis
+%% Current clamp Analysis
 
 types={'CC.txt'}; %defines columns of o (add here for more :))
 variable=0;
@@ -168,17 +225,18 @@ for i=1:length(CC)
     aC(i)=(height(CC(i).values));
 end
 
-    c1=char(types);    
-    CC_T{i,j}=ephyst_extract(CC,c1,variable,aC,0); %turns negative values to absolute
+c1=char(types);    
+CC_T{i,j}=ephyst_extract(CC,c1,variable,aC,0); %turns negative values to absolute
 
 
 
-%% mini Analysis
+%% mini events files parsing
 
 types={'-55_E.txt'}; %defines columns of o (add here for more :))
 variables={'Inst. Freq. (Hz)','Peak Amp (pA)'}; %defines rows of o
 
 for j=1:length(types)
+    
     c1=char(types(j));    
     for i=1:length(variables)
         o{i,j}=ephyst_extract(rec,c1,variables(i),a,1); %turns negative values to absolute
@@ -186,7 +244,7 @@ for j=1:length(types)
 
 end
 
-%% trimming filters
+%% Trimming: Variation over time
 
 %this part finds an index of time-dependent variability of data (in this
 %case through least square fitting) and enables trimming by a coefficient
@@ -196,11 +254,12 @@ C=size(o{1,1}); %the use of this vector admits that all cells inside o are the s
 o_mat=cell(length(variables),C(1,2));
 
 cache=o{j};
-master_metadata=cache(1:7,:);
+[m,n]=size(cache);
+master_metadata(1:5,2:n+1)=cache(1:5,:);
 
 for j=1:length(o) %this length is given by the number of element in the variable array
      o_temp1=o{j};
-     o_temp=o_temp1(7:end,:); %trimming out the headers
+     o_temp=o_temp1(5:end,:); %trimming out the headers
      [m,n]=size(o_temp);
      
         for i=1:n
@@ -210,6 +269,7 @@ for j=1:length(o) %this length is given by the number of element in the variable
             mat_o_sub=cell2mat(o_temp_cell); %convert to mat, in this case normal matrix
             
             o_mat{j,i}=mat_o_sub; %store the matrix out, for further use
+            
             
             xx=(1:length(mat_o_sub));
             c=polyfit(xx',mat_o_sub,1);
@@ -222,37 +282,55 @@ clear cache
 [m,n]=size(o_mat);
 o_mat_x=o_mat;
 
+parameter=parameter_strct(4).value;
+coeff_trim=poly_coeff>parameter;
 
-Cn=C(1,2);
-CM=jet(Cn);
-for j=1:m
-   f=figure;
-   hold on
-   
-    for i=1:Cn
-        cc=numel(o_mat{j,i});
-        cc=(1:cc);
-        o_mat_x{j,i}=cc';
-        scatter(cc',o_mat{j,i},30,CM(i,1:3));
-        l=lsline;
-        set(l(1),'color',CM(i,1:3),'LineWidth',2);
-    end
-    
-    xlabel('event number')
-    ylabel(variables{j})
-    
-    hold off
-end
+%% for testing the variation coefficients visually
+% Cn=C(1,2);
+% CM=jet(Cn);
+% for j=1:m
+%    f=figure;
+%    hold on
+%    
+%     for i=1:Cn
+%         cc=numel(o_mat{j,i});
+%         cc=(1:cc);
+%         o_mat_x{j,i}=cc';
+%         scatter(cc',o_mat{j,i},30,CM(i,1:3));
+%         l=lsline;
+%         set(l(1),'color',CM(i,1:3),'LineWidth',2);
+%     end
+%     
+%     xlabel('event number')
+%     ylabel(variables{j})
+%     
+%     hold off
+% end
 
-
-%for total average frequency
+%% Statistics
+r=1;
+%for total average frequency, each cell
 dur=3*60*1000;
 cache=o{1,1};
+
 for i=1:length(a)
-    av_frequency(1:4,i)=cache(1:4,i);
-    av_frequency{5,i}=1000*(a(i)-1)/dur;
-    
+    mean_frequency(1:4,i)=cache(1:4,i);
+    mean_frequency{5,i}=1000*(a(i)-1)/dur;
 end
+
+statistics(r).parameter='mean_frequency_each_cell';
+statistics(r).values=mean_frequency;
+r=r+1;
+
+statistics(r).parameter='mean_frequency_overall';
+mean_frequencies=cell2mat(mean_frequency(5,:));
+statistics(r).values=mean(mean_frequencies);
+r=r+1;
+
+statistics(r).parameter='SEM_frequency_overall';
+SEM=std(mean_frequencies)/sqrt(length(mean_frequencies));
+statistics(r).values=SEM;
+r=r+1;
 
 %average and median amplitude
 cache=o{2,1};
@@ -263,6 +341,8 @@ for i=1:length(a)
     av_amplitude{6,i}=-1*median(array);
 end
 
+statistics(4).parameter='av_amplitude_each_cell';
+statistics(4).values=av_amplitude;
 
 %for Vm and Ic of the first spike during CC
 
@@ -277,6 +357,9 @@ for i=1:m
     AP_threshold{6,i}=I_steps(cacheIc{6,i});
     
 end
+
+statistics(2).parameter='AP_threshold';
+statistics(2).values='AP_threshold';
 
 
 %to get absolute values
@@ -331,7 +414,6 @@ target_z=zeros(size(target));
 for i=1:numel(target)
 target{i}=target_z(i);
 end
-
 
 for jj=1:length(oT)
     origin_cache=oT{jj};
