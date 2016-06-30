@@ -9,8 +9,6 @@
 
 cd
 
-
-
 %% import parameters for trimming
 
 fileID=fopen('~analysis_parameters.txt');
@@ -28,14 +26,72 @@ end
 %% import blinding_correspondence
 
 clear P
-
-fileID=fopen('~blinding.txt');
-P=textscan(fileID,'%s %s %s %s %s %s');
+Header=1;
+fileID=fopen('~blinding_complete.txt');
+P=textscan(fileID,'%s %s %s %s %s','HeaderLines',Header);
 fclose(fileID);
 
+%% import recording metadata (membrane constants)
+
+Header=1;
+Delimiter=',';
+fileID=fopen('~M_constant.txt');
+C=textscan(fileID,'%s %s %s %s %s','HeaderLines',Header,'Delimiter',Delimiter);
+fclose(fileID);
+
+[m,~]=size(C{1,1});
+[~,n]=size(C);
+Rec_meta=cell(m,n);
+
+C1=C{1,1};
+C2=C{1,2};
+C3=C{1,3};
+C4=C{1,4};
+C5=C{1,5};
+
+for i=1:m
+   Rec_meta{i,1}=C1{i,1};
+   Rec_meta{i,2}=C2{i,1};
+   Rec_meta{i,3}=C3{i,1};
+   Rec_meta{i,4}=C4{i,1};
+   Rec_meta{i,5}=C5{i,1};
+end
+
+j=1;
+for i=1:m
+    
+   if strncmpi(Rec_meta{i,1},'A',1)
+    animal=Rec_meta{i,1};
+   end
+   
+   if strncmpi(Rec_meta{i,1},'s',1)
+    slices=Rec_meta{i,1};
+   end
+   
+   if strncmpi(Rec_meta{i,1},'c',1)
+    cells=Rec_meta{i,1};
+   end
+   
+   if isnan(str2double(Rec_meta{i,1}))
+       
+   else
+       Rec_meta_s(j).animal=animal;
+       Rec_meta_s(j).slices=slices;
+       Rec_meta_s(j).cells=cells;
+       
+       Rec_meta_s(j).Cm=str2double(Rec_meta{i,1});
+       Rec_meta_s(j).Rm=str2double(Rec_meta{i,2});
+       Rec_meta_s(j).Ra=str2double(Rec_meta{i,3});
+       Rec_meta_s(j).HA=str2double(Rec_meta{i,4});
+       Rec_meta_s(j).Comp=str2double(Rec_meta{i,5});
+       
+       j=j+1;
+   end
+   
+end
 
 
-%% import data sets
+%% import recording data sets
 
 r=0;
 r1=0;
