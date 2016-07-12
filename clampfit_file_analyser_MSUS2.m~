@@ -9,7 +9,9 @@
 
 cd
 
-%% INPUT parameters for trimming
+begin_event_number=1 %this parameter can be further used, together with parameter for number of analysed events per recording, to define the interval of events to analyse per recording
+
+%% INPUT parameters for statistics
 
 fileID=fopen('~statistics_settings.txt');
 S=textscan(fileID,'%s %s');
@@ -49,24 +51,25 @@ end
 clear P
 Header=1;
 fileID=fopen('~blinding_complete.txt');
-P=textscan(fileID,'%s %s %s %s %s','HeaderLines',Header);
+P=textscan(fileID,'%s %s %s %s %s %s','HeaderLines',Header);
 fclose(fileID);
 
 [m,~]=size(P{1,1});
-[~,n]=size(P);
 
 P1=P{1,1};
 P2=P{1,2};
 P3=P{1,3};
 P4=P{1,4};
 P5=P{1,5};
+P6=P{1,6};
 
 for i=1:m
    Blinding_strct(i).type=P1{i,1};
    Blinding_strct(i).animal=P2{i,1};
    Blinding_strct(i).slice=P3{i,1};
    Blinding_strct(i).cell=P4{i,1};
-   Blinding_strct(i).treatment=P5{i,1};
+   Blinding_strct(i).pharmacology=P5{i,1};
+   Blinding_strct(i).phenotype=strtrim(P6{i,1});
 end
 
 clear  P P1 P2 P3 P4 P5
@@ -299,7 +302,23 @@ end
 %     
 % end
 
+for i=1:length(rec)
+    rec(i).pharmacology=Blinding_strct(i).pharmacology;
+    rec(i).phenotype=Blinding_strct(i).phenotype;
+end
+
 clear r1 r2 r3 r4 fld1 fld11 fld111
+%% Metadata Headers
+
+for i=1:length(rec)
+   Metadata_headers{1,i}=rec(i).phenotype;
+   Metadata_headers{2,i}=rec(i).animal ;
+   Metadata_headers{3,i}=rec(i).slice;
+   Metadata_headers{4,i}=rec(i).cell;
+   Metadata_headers{5,i}=rec(i).pharmacology ;
+   Metadata_headers{6,i}=rec(i).type;
+end
+
 %% Make file size tables
     %take the size of the table from biggest size peak tables
     for i=1:length(rec)
@@ -320,7 +339,7 @@ clear r1 r2 r3 r4 fld1 fld11 fld111
 %% mini events files organization
 
 types={'-55_E.txt'}; %defines columns of o (add here for more)
-variables={'Inst. Freq. (Hz)','Peak Amp (pA)'}; %defines rows of o
+variables={'Inst. Freq. (Hz)','Peak Amp (pA)','Event Start Time (ms)'}; %defines rows of o
 
 for j=1:length(types)
     
@@ -331,7 +350,76 @@ for j=1:length(types)
 
 end
 
-%% Trimming
+%% Trimming by Membrane constants 
+
+% variation of Ra of more than X%
+% left to be done: implement one step removal of cells using max of all 
+% exclusion vectors
+
+clear cache
+
+Ra_max=Parameter_strct(1).value;
+Ra_variation_max=Parameter_strct(2).value;
+Rm_min=Parameter_strct(3).value;
+j=1;
+cc=1;
+for i=1:length(Membrane_C_strct) %creates Ra variation, Rm tables of each Ra sample per each cell
+    
+    if Membrane_C_strct(i).sample==cc
+        variation_Ra{j,cc}=Membrane_C_strct(i).Ra;
+        Rm{j,cc}=Membrane_C_strct(i).Rm;
+        Comp{j,cc}=Membrane_C_strct(i).Comp;
+        cc=cc+1;
+    end
+    
+    if (i+1)<=length(Membrane_C_strct) && Membrane_C_strct(i+1).sample~=cc
+        cc=1;
+        j=j+1;
+    end
+    
+end
+[m,n]=size(variation_Ra);
+
+for i=1:m %creates exclusion vectors for Ra variation
+    
+        variation_rate_cache=cell2mat(variation_Ra(i,1:n));
+        
+        for j=1:length(variation_rate_cache)-1
+            variation_Ra_full{i,j}=abs((variation_rate_cache(j)-variation_rate_cache(j+1))/variation_rate_cache(j));
+        end
+        
+        variation_rate_m=cell2mat(variation_Ra_full(i,:));
+        Rm_mat=cell2mat(Rm(i,1:end));
+        Rm_mean{i,1}=mean(Rm_mat);
+        
+        if variation_rate_cache(end)>=Ra_max+1
+            exclusion_vector_1(i)=1;
+        else
+            exclusion_vector_1(i)=0;
+        end
+        
+        if variation_rate_m(end)>Ra_variation_max
+            exclusion_vector_2(i)=1;
+        else
+            exclusion_vector_2(i)=0;
+        end
+        
+        if variation_Ra_full{i,1}<Rm_min
+            exclusion_vector_3(i)=1;
+        else
+            exclusion_vector_3(i)=0;
+        end
+end
+
+Parameter_strct(1).exclusion_vector=exclusion_vector_1;
+Parameter_strct(2).exclusion_vector=exclusion_vector_2;
+Parameter_strct(3).exclusion_vector=exclusion_vector_3;
+
+clear variation_rate variation_c
+
+
+
+%% Trimming by Dataset properties, before any statistics
 
 %this part finds an index of time-dependent variability of data sets and
 %enables trimming by a threshold over this index
@@ -364,100 +452,93 @@ for j=1:length(o)
                 mat_o_sub=mat_o_sub.*-1;
             end
                 
-            o_mat{j,i}=mat_o_sub; %store the matrix out, for further use
-            
-%           xx=(1:length(mat_o_sub));
-%           c=polyfit(xx',mat_o_sub,1);
-%           poly_coeff(j,i)=c(1,1); %this array can be used to get the indexes of the "cells" that display abnormal variability
-
+            Datasets_all{j,i}=mat_o_sub; %store the matrix out, for further use
+           
         end
 end
 
-%% first trimming, by minimum number of events
-
 clear cache
 
-min_event_num=Parameter_strct(5).value;
-[m,n]=size(o_mat);
-cache=o_mat;
-
+min_event_num=Parameter_strct(5).value; %creates exclusion vector for minimum number of events
+[~,n]=size(Datasets_all);
+cache=Datasets_all;
 j=1;
 for i=1:n
-    if numel(cache{1,i})>30
-        mat_o_trim1(:,j)=cache(:,i);
-        trim1_master_metadata(:,j)=master_metadata(:,i+1);
-        exclusion_vector(i)=0;
+    
+    if numel(cache{1,i})>min_event_num
+        trim_cache(:,j)=cache(:,i);
+        %trim_metadata(:,j)=master_metadata(:,i+1); %useless
+        exclusion_vector_5(i)=0;
         
         j=j+1;
     else
-        exclusion_vector(i)=1;
+        exclusion_vector_5(i)=1;
     end
+    
 end
-Parameter_strct(5).exclusion_vector=exclusion_vector;
+Parameter_strct(5).exclusion_vector=exclusion_vector_5;
 
 j=1;
-for i=1:length(exclusion_vector)
-
-    if exclusion_vector(i)==0
+for i=1:length(exclusion_vector_5)
+   
+    if exclusion_vector_5(i)==0
         trim1_rec_meta(j)=Membrane_C_strct(i);
         j=j+1;
     end
+    
 end
 
-% to insert trimming criteria
-% parameter=parameter_strct(4).value;
-% coeff_trim=poly_coeff>parameter;
-
-%% second trimming, by variation of Ra of more than X%
-% left to be done: implement one step removal of cells using max of all 
-% exclusion vectors
+%% Statistics and Trimming
 
 clear cache
 
-Ra_variation_max=Parameter_strct(2).value;
+end_event_number=Parameter_strct(7).value;
+Sample_rate=Parameter_strct(10).value;
+Min_event_frequency=Parameter_strct(6).value;
+%Min_event_amplitude=Parameter_strct().value;
+Max_event_frequency=Parameter_strct(8).value;
+Max_event_amplitude=Parameter_strct(9).value;
 
-j=1;
-cc=1;
+Datasets_all_trimmed_1=Datasets_all;
+[m,n]=size(Datasets_all_trimmed_1);
 
-for i=1:length(Membrane_C_strct)
-    
-    if Membrane_C_strct(i).sample==cc
-        variation_c{j,cc}=Membrane_C_strct(i).Ra;
-        cc=cc+1;
+for j=1:m
+
+   for i=1:n
+    cache=Datasets_all_trimmed_1{j,i};
+
+    if length(cache)>=end_event_number+1;
+    cache=cache(begin_event_number+1:end_event_number+1);
     end
+
+    Datasets_all_trimmed_1{j,i}=cache;
+   end
+
+end
+
+%clear cache cache_T
+for i=1:n
     
-    if (i+1)<=length(Membrane_C_strct) && Membrane_C_strct(i+1).sample~=cc
-        cc=1;
-        j=j+1;
-    end
+    cache_T=Datasets_all_trimmed_1{3,i};
+    cache_A=Datasets_all_trimmed_1{2,i};
+    mean_amp(i)=mean(cache_A(2:end));
+    deltaT_events(i)=cache_T(end)-cache_T(2);
+    frequency_events_cells(i)=end_event_number/(deltaT_events(i)*10^-4);
     
 end
 
-[m,n]=size(variation_c);
+exclusion_vector_6=frequency_events_cells<Min_event_frequency;
+exclusion_vector_8=mean_amp>Max_event_frequency;
+exclusion_vector_9=mean_amp>Max_event_amplitude;
 
-for i=1:m
-    
-        variation_rate_cache=cell2mat(variation_c(i,1:n));
-        
-        for j=1:length(variation_rate_cache)-1
-            variation_rate{i,j}=abs((variation_rate_cache(j)-variation_rate_cache(j+1))/variation_rate_cache(j));
-        end
-        
-        variation_rate_m=cell2mat(variation_rate(i,:));
-        
-        if max(variation_rate_m)>Ra_variation_max
-            exclusion_vector(i)=1;
-        else
-            exclusion_vector(i)=0;
-        end
-end
-
-Parameter_strct(2).exclusion_vector=exclusion_vector;
+Parameter_strct(6).exclusion_vector=exclusion_vector_6;
+Parameter_strct(8).exclusion_vector=exclusion_vector_8;
+Parameter_strct(9).exclusion_vector=exclusion_vector_9;
 
 %% for testing variation index visually
 clear cache
 
-[m,n]=size(mat_o_trim1);
+[m,n]=size(trim_cache);
 CM=jet(n);
 
 %axis_var=[0 70;5 45];
@@ -468,7 +549,7 @@ for j=1:m
    hold on
    
     for i=1:n
-        cache=mat_o_trim1{j,i};
+        cache=trim_cache{j,i};
         cc=numel(cache);
         cc=(3:cc);
         o_mat_x{j,i}=cc';
@@ -498,7 +579,133 @@ for j=1:m
     hold off
 end
 
+%% Final Trimming
+
+Results_cells(1,1:length(frequency_events_cells))=num2cell(frequency_events_cells);
+Results_cells(2,1:length(frequency_events_cells))=num2cell(mean_amp);
+exc_sz=Parameter_strct(1).exclusion_vector;
+
+for i=1:length(Parameter_strct)
+    if ~isempty(Parameter_strct(i).exclusion_vector)
+        P(i,1:length(exc_sz))=Parameter_strct(i).exclusion_vector;
+    end
+end
+
+j=1;
+for i=1:length(frequency_events_cells)
+    
+   P_cache=sum(P(1:end,i));
+   
+   if P_cache==0
+    Results_cells_trim_1(:,j)=Results_cells(:,i);
+    Metadata_cells(:,j)=Metadata_headers(:,i);
+    j=j+1;
+   end
+   
+end
+
+%% Final sorting
+
+for i=1:length(Comparison_factors)
+    
+    C_f=Comparison_factors{1,i};
+    switch C_f
+        case 'phenotype'
+            C_f_index=1;
+        case 'animal'
+            C_f_index=2;
+        case 'slice'
+            C_f_index=3;
+        case 'cells'
+            C_f_index=4;
+        case 'pharmacology'
+            C_f_index=5;
+        case 'type'
+            C_f_index=6;
+    end
+    
+    C_f_possible{i,1}=unique(Metadata_headers(C_f_index,:));
+    Final_results_cache=cell(length(Results_cells_trim_1)+1,length(C_f_possible{i,1})+length(Metadata_cells(:,1)));
+    
+    Array_possible=C_f_possible{i,1};
+    for j=1:length(Array_possible);
+        Final_results_cache{1,length(Metadata_cells(:,1))+i}=Array_possible{i};
+    end
+    
+    Filler=length(C_f_possible{i,1});
+    
+    for jj=1:length(Array_possible)
+    
+        for jjj=1:length(Results_cells_trim_1(:,1))
+            Final_results_cache=cell(length(Results_cells_trim_1)+1,length(C_f_possible{i,1})+length(Metadata_cells(:,1)));
+            for j=1:length(Results_cells_trim_1(1,:))
+
+               if Metadata_headers{C_f_index,j}==Array_possible{jj}
+                   
+                    Final_results_cache{j,Filler+1}=Results_cells_trim(jjj,j);
+
+                    Final_results_cache{j,2}=Metadata_headers{1,i};
+                    Final_results_cache{j,3}=Metadata_headers{2,i};
+                    Final_results_cache{j,4}=Metadata_headers{3,i};
+                    Final_results_cache{j,5}=Metadata_headers{4,i};
+                    Final_results_cache{j,6}=Metadata_headers{5,i};
+                    Final_results_cache{j,7}=Metadata_headers{6,i};
+
+               end
+
+            end
+            Final_results{jjj,jj}=Final_results_cache;
+        end
+    
+    end
+ 
+end
+
+
+for i=1:length(Results_cells)
+
+   phenotype=Metadata_headers{1,i};
+   animal=Metadata_headers{2,i};
+   slice=Metadata_headers{3,i};
+   cell=Metadata_headers{4,i};
+   pharmacology=Metadata_headers{5,i};
+   type=Metadata_headers{6,i};
+   
+   if
+   end
+end
+
+
+
+
 %% OUTPUT
+
+[m,n]=size(Datasets_all_trimmed_1); %exclusion report
+M=length(Parameter_strct);
+[M2,N2]=size(master_metadata);
+
+for i=1:M
+exclusion_report{i+M2,1}=Parameter_strct(i).parameter;
+end
+
+exclusion_report(1:M2,1:N2)=master_metadata;
+
+clear cache
+for i=1:M
+    cache=Parameter_strct(i).exclusion_vector;
+    if ~isempty(cache)
+    cache=num2cell(cache)';
+    exclusion_report(i+M2,2:end)=cache;
+    end
+end
+
+[n,m]=size(exclusion_report);
+
+E=cell2table(exclusion_report);
+writetable(E,'~Exclusion_report.csv');
+
+
+
  [n,m]=size(o);
  for j=1:m
     for i=1:n
