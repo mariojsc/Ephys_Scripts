@@ -364,7 +364,7 @@ for j=1:length(o)
                 mat_o_sub=mat_o_sub.*-1;
             end
                 
-            Datasets_all{j,i}=mat_o_sub; %store the matrix out, for further use
+            o_mat{j,i}=mat_o_sub; %store the matrix out, for further use
             
 %           xx=(1:length(mat_o_sub));
 %           c=polyfit(xx',mat_o_sub,1);
@@ -373,9 +373,42 @@ for j=1:length(o)
         end
 end
 
-%% Trimming by Membrane constants 
+%% first trimming, by minimum number of events
 
-% variation of Ra of more than X%
+clear cache
+
+min_event_num=Parameter_strct(5).value;
+[m,n]=size(o_mat);
+cache=o_mat;
+
+j=1;
+for i=1:n
+    if numel(cache{1,i})>30
+        mat_o_trim1(:,j)=cache(:,i);
+        trim1_master_metadata(:,j)=master_metadata(:,i+1);
+        exclusion_vector(i)=0;
+        
+        j=j+1;
+    else
+        exclusion_vector(i)=1;
+    end
+end
+Parameter_strct(5).exclusion_vector=exclusion_vector;
+
+j=1;
+for i=1:length(exclusion_vector)
+
+    if exclusion_vector(i)==0
+        trim1_rec_meta(j)=Membrane_C_strct(i);
+        j=j+1;
+    end
+end
+
+% to insert trimming criteria
+% parameter=parameter_strct(4).value;
+% coeff_trim=poly_coeff>parameter;
+
+%% second trimming, by variation of Ra of more than X%
 % left to be done: implement one step removal of cells using max of all 
 % exclusion vectors
 
@@ -421,42 +454,6 @@ end
 
 Parameter_strct(2).exclusion_vector=exclusion_vector;
 
-%% first trimming, by minimum number of events
-
-clear cache
-
-min_event_num=Parameter_strct(5).value;
-[m,n]=size(Datasets_all);
-cache=Datasets_all;
-
-j=1;
-for i=1:n
-    if numel(cache{1,i})>30
-        mat_o_trim1(:,j)=cache(:,i);
-        trim1_master_metadata(:,j)=master_metadata(:,i+1);
-        exclusion_vector(i)=0;
-        
-        j=j+1;
-    else
-        exclusion_vector(i)=1;
-    end
-end
-Parameter_strct(5).exclusion_vector=exclusion_vector;
-
-j=1;
-for i=1:length(exclusion_vector)
-
-    if exclusion_vector(i)==0
-        trim1_rec_meta(j)=Membrane_C_strct(i);
-        j=j+1;
-    end
-end
-
-% to insert trimming criteria
-% parameter=parameter_strct(4).value;
-% coeff_trim=poly_coeff>parameter;
-
-
 %% for testing variation index visually
 clear cache
 
@@ -501,12 +498,7 @@ for j=1:m
     hold off
 end
 
-%% Statistics
-
-
 %% OUTPUT
-
-
  [n,m]=size(o);
  for j=1:m
     for i=1:n
