@@ -405,7 +405,7 @@ for i=1:m %creates exclusion vectors for Ra variation
         variation_rate_m=cell2mat(variation_Ra_full(i,:));
         Rm_mat=cell2mat(Rm(i,1:end));
         Rm_mean{i,1}=mean(Rm_mat);
-        Cm_mat=cell2mat(Comp(i,1:end));
+        Cm_mat=cell2mat(Rm(i,1:end));
         
         if variation_rate_cache(end)>=Ra_max+1
             exclusion_vector_1(i)=1;
@@ -426,17 +426,17 @@ for i=1:m %creates exclusion vectors for Ra variation
         end
         
        
-        if Comp_crit==1 && Cm_mat(end)==1
-            exclusion_vector_11(i)=1;
+        if Comp_crit==1 && 
+            variation_Ra_full{i,1}<Rm_min
+            exclusion_vector_3(i)=1;
         else
-            exclusion_vector_11(i)=0;
+            exclusion_vector_3(i)=0;
         end
 end
 
 Parameter_strct(1).exclusion_vector=exclusion_vector_1;
 Parameter_strct(2).exclusion_vector=exclusion_vector_2;
 Parameter_strct(3).exclusion_vector=exclusion_vector_3;
-Parameter_strct(11).exclusion_vector=exclusion_vector_11;
 
 clear variation_rate variation_c
 
@@ -719,13 +719,13 @@ end
 
 [m,n]=size(Datasets_all_trimmed_1); %exclusion report
 M=length(Parameter_strct);
-[M2,N2]=size(Metadata_headers);
+[M2,N2]=size(master_metadata);
 
 for i=1:M
 exclusion_report{i+M2,1}=Parameter_strct(i).parameter;
 end
 
-exclusion_report(2:M2+1,2:N2+1)=Metadata_headers;
+exclusion_report(1:M2,1:N2)=master_metadata;
 
 clear cache
 for i=1:M
