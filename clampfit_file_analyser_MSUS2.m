@@ -528,7 +528,7 @@ for i=1:n
 end
 
 exclusion_vector_6=frequency_events_cells<Min_event_frequency;
-exclusion_vector_8=mean_amp>Max_event_frequency;
+exclusion_vector_8=frequency_events_cells>Max_event_frequency;
 exclusion_vector_9=mean_amp>Max_event_amplitude;
 
 Parameter_strct(6).exclusion_vector=exclusion_vector_6;
@@ -536,50 +536,51 @@ Parameter_strct(8).exclusion_vector=exclusion_vector_8;
 Parameter_strct(9).exclusion_vector=exclusion_vector_9;
 
 %% for testing variation index visually
-clear cache
-
-[m,n]=size(trim_cache);
-CM=jet(n);
-
-%axis_var=[0 70;5 45];
-axis_var=[-1 2;-2 2]; %for zscore
-
-for j=1:m
-   f=figure;
-   hold on
-   
-    for i=1:n
-        cache=trim_cache{j,i};
-        cc=numel(cache);
-        cc=(3:cc);
-        o_mat_x{j,i}=cc';
-        
-        zeed=zscore(cache(3:end,1));
-        moving_av=tsmovavg(zeed,'t',40,1);
-        
-        %moving_av=tsmovavg(cache,'t',40,1);
-        
-        scatter(cc',zeed,1,CM(i,1:3));
-        
-        %scatter(cc',cache,1,CM(i,1:3));
-        
-        plot(moving_av,'Color',CM(i,1:3),'LineWidth',0.8);
-        
-        %set(l(1),'color',CM(i,1:3),'LineWidth',2);
-    end
-    
-    axis([0 600 axis_var(j,1) axis_var(j,2)])
-    
-    xlabel('event number')
-    ylabel(variables{j})
-    line([0,600],[0,0],'Color','k')
-    fig=gcf;
-    fig.Position=([1 1 1440 275]);
-    
-    hold off
-end
+% clear cache
+% 
+% [m,n]=size(trim_cache);
+% CM=jet(n);
+% 
+% %axis_var=[0 70;5 45];
+% axis_var=[-1 2;-2 2]; %for zscore
+% 
+% for j=1:m
+%    f=figure;
+%    hold on
+%    
+%     for i=1:n
+%         cache=trim_cache{j,i};
+%         cc=numel(cache);
+%         cc=(3:cc);
+%         o_mat_x{j,i}=cc';
+%         
+%         zeed=zscore(cache(3:end,1));
+%         moving_av=tsmovavg(zeed,'t',40,1);
+%         
+%         %moving_av=tsmovavg(cache,'t',40,1);
+%         
+%         scatter(cc',zeed,1,CM(i,1:3));
+%         
+%         %scatter(cc',cache,1,CM(i,1:3));
+%         
+%         plot(moving_av,'Color',CM(i,1:3),'LineWidth',0.8);
+%         
+%         %set(l(1),'color',CM(i,1:3),'LineWidth',2);
+%     end
+%     
+%     axis([0 600 axis_var(j,1) axis_var(j,2)])
+%     
+%     xlabel('event number')
+%     ylabel(variables{j})
+%     line([0,600],[0,0],'Color','k')
+%     fig=gcf;
+%     fig.Position=([1 1 1440 275]);
+%     
+%     hold off
+% end
 
 %% Final Trimming
+
 
 Results_cells(1,1:length(frequency_events_cells))=num2cell(frequency_events_cells);
 Results_cells(2,1:length(frequency_events_cells))=num2cell(mean_amp);
@@ -598,7 +599,7 @@ for i=1:length(frequency_events_cells)
    
    if P_cache==0
     Results_cells_trim_1(:,j)=Results_cells(:,i);
-    Metadata_cells(:,j)=Metadata_headers(:,i);
+    Metadata_trim(:,j)=Metadata_headers(:,i);
     j=j+1;
    end
    
@@ -606,7 +607,11 @@ end
 
 %% Final sorting
 
+organizer_index=1;
+
 for i=1:length(Comparison_factors)
+    
+
     
     C_f=Comparison_factors{1,i};
     switch C_f
@@ -624,58 +629,48 @@ for i=1:length(Comparison_factors)
             C_f_index=6;
     end
     
-    C_f_possible{i,1}=unique(Metadata_headers(C_f_index,:));
-    Final_results_cache=cell(length(Results_cells_trim_1)+1,length(C_f_possible{i,1})+length(Metadata_cells(:,1)));
-    
+    C_f_possible{i,1}=unique(Metadata_trim(C_f_index,:));
+    Filler=length(Metadata_trim(:,1));
     Array_possible=C_f_possible{i,1};
-    for j=1:length(Array_possible);
-        Final_results_cache{1,length(Metadata_cells(:,1))+i}=Array_possible{i};
-    end
     
-    Filler=length(C_f_possible{i,1});
-    
-    
-        for jjj=1:length(Results_cells_trim_1(:,1))
+for jjj=1:length(Results_cells_trim_1(:,1))
             
-            for jj=1:length(Array_possible)
-            Final_results_cache=cell(length(Results_cells_trim_1)+1,length(C_f_possible{i,1})+length(Metadata_cells(:,1)));
+    Final_results_cache=cell(length(Results_cells_trim_1)+1,length(C_f_possible{i,1})+length(Metadata_trim(:,1)));
+    for j=1:length(Array_possible);
+        Final_results_cache{1,length(Metadata_trim(:,1))+j}=Array_possible{1,j};
+    end
+         
+    inner_j=2;
+    
+          for jj=1:length(Array_possible)
+            
             for j=1:length(Results_cells_trim_1(1,:))
 
-               if Metadata_headers{C_f_index,j}==Array_possible{jj}
-                   
-                    Final_results_cache{j,Filler+1}=Results_cells_trim(jjj,j);
+               if strcmp(Metadata_trim{C_f_index,j},Array_possible{jj})
 
-                    Final_results_cache{j,2}=Metadata_headers{1,i};
-                    Final_results_cache{j,3}=Metadata_headers{2,i};
-                    Final_results_cache{j,4}=Metadata_headers{3,i};
-                    Final_results_cache{j,5}=Metadata_headers{4,i};
-                    Final_results_cache{j,6}=Metadata_headers{5,i};
-                    Final_results_cache{j,7}=Metadata_headers{6,i};
-
+                    Final_results_cache{inner_j,1}=Metadata_trim{1,j};
+                    Final_results_cache{inner_j,2}=Metadata_trim{2,j};
+                    Final_results_cache{inner_j,3}=Metadata_trim{3,j};
+                    Final_results_cache{inner_j,4}=Metadata_trim{4,j};
+                    Final_results_cache{inner_j,5}=Metadata_trim{5,j};
+                    Final_results_cache{inner_j,6}=Metadata_trim{6,j};
+                    
+                    Final_results_cache{inner_j,Filler+jj}=Results_cells_trim_1{jjj,j};
+                    
+                    inner_j=inner_j+1;
                end
 
             end
-            Final_results{jjj,jj}=Final_results_cache;
-        end
-    
-    end
- 
+            
+          end
+        
+            Final_results{jjj,organizer_index}=Final_results_cache;
+            inner_j=1;
 end
-
-
-for i=1:length(Results_cells)
-
-   phenotype=Metadata_headers{1,i};
-   animal=Metadata_headers{2,i};
-   slice=Metadata_headers{3,i};
-   cell=Metadata_headers{4,i};
-   pharmacology=Metadata_headers{5,i};
-   type=Metadata_headers{6,i};
-   
-   if
-   end
+      
+organizer_index=organizer_index+1;
+        
 end
-
 
 
 
@@ -705,12 +700,12 @@ end
 E=cell2table(exclusion_report);
 writetable(E,'~Exclusion_report.csv');
 
+Variables={'mini_frequency','mini-amplitude'};
 
-
- [n,m]=size(o);
+[n,m]=size(Final_results);
  for j=1:m
     for i=1:n
-        T=cell2table(o{i,j});
-        writetable(T,strcat(char(types(j)),'--',char(variables(i)),'.csv'));
+        T=cell2table(Final_results{i,j});
+        writetable(T,char(strcat(Variables(i),'--',Comparison_factors(j),'.csv')));
     end
  end
