@@ -10,6 +10,17 @@
 clear all
 cd
 
+event_type='excitatory';
+
+switch event_type
+    case 'excitatory'
+        file_type='-55_E.txt';
+    otherwise
+        file_type='-55_I.txt';
+end
+        
+
+
 begin_event_number=1 %this parameter can be further used, together with parameter for number of analysed events per recording, to define the interval of events to analyse per recording
 
 %% INPUT parameters for statistics
@@ -186,7 +197,7 @@ fld11=dir('s*');
             end
         end
         
-        files = dir('-55_E.txt');
+        files = dir(file_type);
         if (length(files))~=0
             for id = 1:length(files);
                         % creates tables with values from the converted files
@@ -339,7 +350,7 @@ end
 
 %% mini events files organization
 
-types={'-55_E.txt'}; %defines columns of o (add here for more)
+types={file_type}; %defines columns of o (add here for more)
 variables={'Inst. Freq. (Hz)','Peak Amp (pA)','Event Start Time (ms)'}; %defines rows of o
 
 for j=1:length(types)
@@ -392,9 +403,11 @@ for i=1:length(Membrane_C_strct) %creates Ra variation, Ra tables of each Ra sam
     end
     
 end
-[m,n]=size(variation_Ra);
 
-for i=1:m %creates exclusion vectors for Ra variation
+[~,n]=size(variation_Ra);
+[~,m]=size(rec);
+
+for i=1:m %creates exclusion vectors for Ra,Rm,Comp,...
     
         variation_rate_cache=cell2mat(variation_Ra(i,1:n));
         
