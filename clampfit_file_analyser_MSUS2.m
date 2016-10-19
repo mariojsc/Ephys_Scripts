@@ -7,8 +7,12 @@
 %from the very top of the files, so variable name gets Nan, and for instant
 %frequency, also the first N/A
 
+%% overall parameters
+
 clear all
 cd
+
+current_clamp=0;
 
 event_type='excitatory';
 
@@ -21,7 +25,7 @@ end
         
 
 
-begin_event_number=1 %this parameter can be further used, together with parameter for number of analysed events per recording, to define the interval of events to analyse per recording
+begin_event_number=1; %this parameter can be further used, together with parameter for number of analysed events per recording, to define the interval of events to analyse per recording
 
 %% INPUT parameters for statistics
 
@@ -227,6 +231,8 @@ fld11=dir('s*');
             r4=r4+id;
         end
         
+        if current_clamp==1
+        
         files = dir('CC1_curve.txt');
         if (length(files))~=0
             for id = 1:length(files);
@@ -275,16 +281,19 @@ fld11=dir('s*');
                 end
                 r3=r3+id;
             end
+        end
+        
         cd(oldfolderrr)
+        
         end
     cd(oldfolderr) 
     end
 cd(oldfolder)
 end
 
-%take rec structure and generate a blinding.txt with fields for each
-%parameter. This text file has to be filed in order to separate groups and
-%perform statistics
+% take rec structure and generate a blinding.txt with fields for each
+% parameter. This text file has to be filed in order to separate groups and
+% perform statistics
 % 
 % clear cache
 % cache=dir;
@@ -331,13 +340,15 @@ for i=1:length(rec)
    Metadata_headers{6,i}=rec(i).type;
 end
 
-%% Make file size tables
+%% Make recording size (number of elements) vectors
     %take the size of the table from biggest size peak tables
     for i=1:length(rec)
         [n,~]=size(rec(i).values);
         a(i)=n;
     end 
    
+    if current_clamp==1
+    
     for i=1:length(recA)
         [n,~]=size(recA(i).values);
         aA(i)=n;
@@ -346,12 +357,14 @@ end
     for i=1:length(recB)
         [n,~]=size(recB(i).values);
         aB(i)=n;
-    end     
+    end 
+    
+    end
 
 %% mini events files organization
 
 types={file_type}; %defines columns of o (add here for more)
-variables={'Inst. Freq. (Hz)','Peak Amp (pA)','Event Start Time (ms)'}; %defines rows of o
+%variables={'Inst. Freq. (Hz)','Peak Amp (pA)','Event Start Time (ms)','Rise Tau (ms)','Decay Tau (ms)'}; %defines rows of o
 
 for j=1:length(types)
     
@@ -380,9 +393,7 @@ j=1;
 cc=1;
 ii=1;
 
-for i=1:length(Membrane_C_strct) %creates Ra variation, Ra tables of each Ra sample per each cell
-    
-   
+for i=1:length(Membrane_C_strct) %creates Ra variation, Ra tables of each Ra sample per each cell. Basically generates the Membrane_C_org file.
     
     if Membrane_C_strct(i).sample==cc
         variation_Ra{j,cc}=Membrane_C_strct(i).Ra;
@@ -391,8 +402,9 @@ for i=1:length(Membrane_C_strct) %creates Ra variation, Ra tables of each Ra sam
         cc=cc+1;
     end
     
-    if (i+1)<=length(Membrane_C_strct) && Membrane_C_strct(i+1).sample~=cc
-        
+    if (i)==length(Membrane_C_strct) || Membrane_C_strct(i+1).sample~=cc  
+    %if (i+1)<=length(Membrane_C_strct) && Membrane_C_strct(i+1).sample~=cc
+
             %if cc==time_of_membrane_constant_measurement
                 Membrane_C_org(ii)=Membrane_C_strct(i);
                 ii=ii+1;
@@ -407,7 +419,7 @@ end
 [~,n]=size(variation_Ra);
 [~,m]=size(rec);
 
-for i=1:m %creates exclusion vectors for Ra,Rm,Comp,...
+for i=1:m %creates exclusion vectors based on parameters for Ra,Rm,Comp,...
     
         variation_rate_cache=cell2mat(variation_Ra(i,1:n));
         
@@ -420,17 +432,20 @@ for i=1:m %creates exclusion vectors for Ra,Rm,Comp,...
         Rm_mean{i,1}=mean(Rm_mat);
         Cm_mat=cell2mat(Comp(i,1:end));
         
-        if variation_rate_cache(end)>=Ra_max+1
-            exclusion_vector_1(i)=1;
+        %if variation_rate_m(end)>Ra_variation_max %here tells what variation rate is compared
+        if any(variation_rate_m(:) <= 0.2)
+           % variation_index=find(any(variation_rate_m(:) <= 0.2)==1);
+            exclusion_vector_2(i)=0;
         else
-            exclusion_vector_1(i)=0;
+            exclusion_vector_2(i)=1;
         end
         
-        if variation_rate_m(end)>Ra_variation_max
-            exclusion_vector_2(i)=1;
-        else
-            exclusion_vector_2(i)=0;
+        if variation_rate_cache(end)>=Ra_max+1 %exclusion based on access resistance maximum
+                exclusion_vector_1(i)=1;
+            else
+                exclusion_vector_1(i)=0;
         end
+        
         
         if variation_Ra_full{i,1}<Rm_min
             exclusion_vector_3(i)=1;
@@ -438,7 +453,7 @@ for i=1:m %creates exclusion vectors for Ra,Rm,Comp,...
             exclusion_vector_3(i)=0;
         end
         
-       
+        
         if Comp_crit==1 && Cm_mat(end)==1
             exclusion_vector_11(i)=1;
         else
@@ -457,8 +472,8 @@ clear variation_rate variation_c
 
 %% Trimming by Dataset properties, before any statistics
 
-%this part finds an index of time-dependent variability of data sets and
-%enables trimming by a threshold over this index
+%previously: "this part finds an index of time-dependent variability of data sets and
+%enables trimming by a threshold over this index"
 
 
 %this part converts the cells to mat; the obtained matrices will continue
@@ -501,7 +516,7 @@ cache=Datasets_all;
 j=1;
 for i=1:n
     
-    if numel(cache{1,i})>min_event_num
+    if numel(cache{1,i})>=min_event_num
         trim_cache(:,j)=cache(:,i);
         %trim_metadata(:,j)=master_metadata(:,i+1); %useless
         exclusion_vector_5(i)=0;
@@ -539,7 +554,7 @@ Max_event_amplitude=Parameter_strct(9).value;
 Datasets_all_trimmed_1=Datasets_all;
 [m,n]=size(Datasets_all_trimmed_1);
 
-for j=1:m
+for j=1:m %
 
    for i=1:n
     cache=Datasets_all_trimmed_1{j,i};
@@ -554,13 +569,13 @@ for j=1:m
 end
 
 %clear cache cache_T
-for i=1:n
+for i=1:n %Discrete statistics
     
     cache_T=Datasets_all_trimmed_1{3,i};
     cache_A=Datasets_all_trimmed_1{2,i};
     mean_amp(i)=mean(cache_A(2:end));
     deltaT_events(i)=cache_T(end)-cache_T(2);
-    frequency_events_cells(i)=end_event_number/(deltaT_events(i)*10^-4);
+    frequency_events_cells(i)=end_event_number/(deltaT_events(i)*10^-3); %%%%%% PREVIOUS MISTAKE?
     
 end
 
@@ -568,9 +583,9 @@ exclusion_vector_6=frequency_events_cells<Min_event_frequency;
 exclusion_vector_8=frequency_events_cells>Max_event_frequency;
 exclusion_vector_9=mean_amp>Max_event_amplitude;
 
-Parameter_strct(6).exclusion_vector=exclusion_vector_6;
-Parameter_strct(8).exclusion_vector=exclusion_vector_8;
-Parameter_strct(9).exclusion_vector=exclusion_vector_9;
+Parameter_strct(6).exclusion_vector=double(exclusion_vector_6);
+Parameter_strct(8).exclusion_vector=double(exclusion_vector_8);
+Parameter_strct(9).exclusion_vector=double(exclusion_vector_9);
 
 %% for testing variation index visually
 % clear cache
@@ -618,19 +633,18 @@ Parameter_strct(9).exclusion_vector=exclusion_vector_9;
 
 %% Final Trimming
 
-
 Results_cells(1,1:length(frequency_events_cells))=num2cell(frequency_events_cells);
 Results_cells(2,1:length(frequency_events_cells))=num2cell(mean_amp);
 exc_sz=Parameter_strct(1).exclusion_vector;
 
-for i=1:length(Parameter_strct)
+for i=1:length(Parameter_strct) 
     if ~isempty(Parameter_strct(i).exclusion_vector)
         P(i,1:length(exc_sz))=Parameter_strct(i).exclusion_vector;
     end
 end
 
 j=1;
-for i=1:length(frequency_events_cells)
+for i=1:length(frequency_events_cells) %If no exclusion vector filled, then cell passes
     
    P_cache=sum(P(1:end,i));
    
@@ -645,10 +659,11 @@ for i=1:length(frequency_events_cells)
 end
 
 [m,n]=size(Results_cells_trim_1);
+[Dt,~]=size(Datasets_trimmed_2);
 
 for i=1:n
 
-    for j=1:m
+    for j=1:2
         Results_cells_trim_1{m+j,i}=Datasets_trimmed_2{j,i};
     end
     
@@ -690,6 +705,7 @@ for i=1:length(Comparison_factors)
     for jjj=1:length(Results_cells_trim_1(:,1))
             
         Final_results_cache=cell(length(Results_cells_trim_1)+1,length(C_f_possible{i,1})+length(Metadata_trim(:,1)));
+        
         for j=1:length(Array_possible);
             Final_results_cache{1,length(Metadata_trim(:,1))+j}=Array_possible{1,j};
         end
